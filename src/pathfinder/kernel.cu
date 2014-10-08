@@ -40,9 +40,15 @@ CalculateManhattanDistance(int *A, int *B, int startPointX, int startPointY, int
 			currentValue = currentValue == MAZE_FREE_POSITION? 0 : 1;
 
 
+			int mx, my;
 
-			int manhattan_from_start = max(__sad(x,startPointX,0),__sad(y,startPointY,0));
-			int manhattan_from_goal = max(__sad(x,goalPointX,0),__sad(y,goalPointY,0));
+			mx = __sad(x,startPointX,0);
+			my = __sad(y,startPointY,0);
+			int manhattan_from_start = max(mx,my);
+
+			mx = __sad(x,goalPointX,0);
+			my = __sad(y,goalPointY,0);
+			int manhattan_from_goal = max(mx,my);
 
 			//B[offset] = currentValue * (manhattan);
 			B[offset] = manhattan_from_start + manhattan_from_goal;
@@ -155,8 +161,8 @@ int main()
 	int START_POINT = getXY(START_POINT_X, START_POINT_Y, WIDTH);
 	maze[START_POINT] = MAZE_START_POINT;
 	// Set end point
-	int END_POINT_X = 30,
-		END_POINT_Y = 28;
+	int END_POINT_X = 10,
+		END_POINT_Y = 18;
 	int END_POINT = getXY(END_POINT_X, END_POINT_Y, WIDTH);
 	maze[END_POINT] = MAZE_END_POINT;
 
