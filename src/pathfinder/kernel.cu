@@ -19,9 +19,11 @@ __device__  __host__ int getXY(int x, int y, int width)
 	return y * width + x;
 }
 
-/*matrix multiplication kernels*/
+/**
+ * Pathfinding using an iterative approach and Manhattan distance as heuristic value
+ **/
 __global__ void
-MatrixMulDevice(int *A, int *B)
+CalculateManhattanDistance(int *A, int *B, int goalPointX, int goalPointY)
 {
 	unsigned int width  = gridDim.x * blockDim.x;
 	unsigned int height = gridDim.y * blockDim.y;
@@ -31,16 +33,21 @@ MatrixMulDevice(int *A, int *B)
 
 	if (offset < (width*width))
 	{
-		// C[getXY(x, y, width)] = 0;
+		int currentValue = A[offset];
 
-		// float c = 0;
+		if (currentValue != MAZE_OBSTACLE)
+		{
+			currentValue = currentValue == MAZE_FREE_POSITION? 0 : 1;
 
-		// for (int i = 0; i < width; i++)
-		// {
-		// 	c += A[getXY(x, i, width)] * B[getXY(i, y, width)];
-		// }
+			int manhattan = (x - goalPointX)*(x - goalPointX) + (y - goalPointY)*(y - goalPointY);
 
-		// C[getXY(x, y, width)] = c;
+			//B[offset] = currentValue * (manhattan);
+			B[offset] = manhattan;
+		}
+		else
+		{
+			B[offset] = width*height;
+		}
 	}
 }
 
@@ -59,6 +66,10 @@ void generateMaze(int *maze, int width, int height)
 			{
 				value = MAZE_OBSTACLE;
 			}
+			else
+			{
+				value = MAZE_FREE_POSITION;
+			}
 
 			index = i * width + j;
 			maze[index] = value;
@@ -72,8 +83,6 @@ int main()
 	const int WIDTH  = 32;
 	const int HEIGHT = 32;
 	const int SIZE 	 = WIDTH * HEIGHT;
-
-	int *maze, *maze_result;
 
 	 // This will pick the best possible CUDA capable device
     cudaDeviceProp deviceProp;
@@ -106,8 +115,12 @@ int main()
 	//Reset no device
 	CUDA_CHECK_RETURN(cudaDeviceReset());
 
+	int *maze, *maze_result, *startPointX, *startPointY;
+
 	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&maze, SIZE * sizeof(int)));
 	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&maze_result, SIZE * sizeof(int)));
+	//CUDA_CHECK_RETURN(cudaMallocManaged((void**)&startPointX, sizeof(int)));
+	//CUDA_CHECK_RETURN(cudaMallocManaged((void**)&startPointY, sizeof(int)));
 
 	//Generate Maze
 	generateMaze(maze, WIDTH, HEIGHT);
@@ -123,6 +136,17 @@ int main()
 		}
 	}
 
+	// Set start point
+	int START_POINT_X = 3,
+		START_POINT_Y = 4;
+	int START_POINT = getXY(START_POINT_X, START_POINT_Y, WIDTH);
+	maze[START_POINT] = MAZE_START_POINT;
+	// Set end point
+	int END_POINT_X = 30,
+		END_POINT_Y = 28;
+	int END_POINT = getXY(END_POINT_X, END_POINT_Y, WIDTH);
+	maze[END_POINT] = MAZE_END_POINT;
+
 	printf("\nPathfinder - GPU\n");
 	printf("Maze size: %d x %d - memory: [global]\n", WIDTH, HEIGHT);
 
@@ -134,7 +158,7 @@ int main()
 	dim3 threadsPerBlock(32, 32);
 	dim3 grid(WIDTH / threadsPerBlock.x, HEIGHT / threadsPerBlock.y);
 
-	MatrixMulDevice << <grid, threadsPerBlock >> > (maze, maze_result);
+	CalculateManhattanDistance << <grid, threadsPerBlock >> > (maze, maze_result, END_POINT_X, END_POINT_Y);
 	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
 	// Showing results
