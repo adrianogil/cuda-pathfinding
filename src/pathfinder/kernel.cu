@@ -23,7 +23,7 @@ __device__  __host__ int getXY(int x, int y, int width)
  * Pathfinding using an iterative approach and Manhattan distance as heuristic value
  **/
 __global__ void
-CalculateManhattanDistance(int *A, int *B, int goalPointX, int goalPointY)
+CalculateManhattanDistance(int *A, int *B, int startPointX, int startPointY, int goalPointX, int goalPointY)
 {
 	unsigned int width  = gridDim.x * blockDim.x;
 	unsigned int height = gridDim.y * blockDim.y;
@@ -39,10 +39,23 @@ CalculateManhattanDistance(int *A, int *B, int goalPointX, int goalPointY)
 		{
 			currentValue = currentValue == MAZE_FREE_POSITION? 0 : 1;
 
-			int manhattan = (x - goalPointX)*(x - goalPointX) + (y - goalPointY)*(y - goalPointY);
+
+
+			int manhattan_from_start = max(__sad(x,startPointX,0),__sad(y,startPointY,0));
+			int manhattan_from_goal = max(__sad(x,goalPointX,0),__sad(y,goalPointY,0));
 
 			//B[offset] = currentValue * (manhattan);
-			B[offset] = manhattan;
+			B[offset] = manhattan_from_start + manhattan_from_goal;
+
+			__syncthreads();
+
+			A[offset] = B[offset];
+
+			__syncthreads();
+
+			int path_value = A[getXY(startPointX, startPointY, width)];
+
+			B[offset] = A[offset] == path_value? manhattan_from_start : 0;
 		}
 		else
 		{
@@ -158,7 +171,7 @@ int main()
 	dim3 threadsPerBlock(32, 32);
 	dim3 grid(WIDTH / threadsPerBlock.x, HEIGHT / threadsPerBlock.y);
 
-	CalculateManhattanDistance << <grid, threadsPerBlock >> > (maze, maze_result, END_POINT_X, END_POINT_Y);
+	CalculateManhattanDistance << <grid, threadsPerBlock >> > (maze, maze_result, START_POINT_X, START_POINT_Y, END_POINT_X, END_POINT_Y);
 	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
 	// Showing results
