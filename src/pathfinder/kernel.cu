@@ -14,16 +14,65 @@
 #define MAZE_START_POINT	2
 #define MAZE_END_POINT 		3
 
+#define GetTransitionMatrix(Name, config) \
+__global__ void \
+Name(int *A, int *transitionMatrix) \
+{\
+	unsigned int width  = gridDim.x * blockDim.x;\
+	unsigned int height = gridDim.y * blockDim.y;\
+	unsigned int x      = blockIdx.x * blockDim.x + threadIdx.x;\
+	unsigned int y      = blockIdx.y * blockDim.y + threadIdx.y;\
+	unsigned int offset = x + y * width;\
+\
+	if (offset < (width*height))	{ \
+		int nx = x;\
+		int ny = y;\
+		\
+		config;\
+		\
+		int noffset = nx + ny * width;\
+\
+		if (noffset >= 0 && noffset < (width*height))\
+		{\
+			transitionMatrix[offset] = A[noffset] == MAZE_OBSTACLE? -1 : noffset;\
+		}\
+	}\
+}
+
+
+GetTransitionMatrix(Up, nx=x;ny=y+1;);
+GetTransitionMatrix(Down, nx=x;ny=y-1;);
+GetTransitionMatrix(Left, nx=x-1;ny=y;);
+GetTransitionMatrix(Right, nx=x+1;ny=y;);
+GetTransitionMatrix(UpRight, nx=x+1;ny=y+1;);
+GetTransitionMatrix(UpLeft, nx=x-1;ny=y+1;);
+GetTransitionMatrix(DownRight, nx=x+1;ny=y-1;);
+GetTransitionMatrix(DownLeft, nx=x-1;ny=y-1;);
+
+struct PathfindingData
+{
+	int *transitionUp;
+	int *transitionDown;
+	int *transitionLeft;
+	int *transitionRight;
+	int *transitionUpRight;
+	int *transitionUpLeft;
+	int *transitionDownRight;
+	int *transitionDownLeft;
+};
+
 __device__  __host__ int getXY(int x, int y, int width)
 {
 	return y * width + x;
 }
 
+
+
 /**
  * Pathfinding using an iterative approach and Manhattan distance as heuristic value
  **/
 __global__ void
-CalculateManhattanDistance(int *A, int *B, int startPointX, int startPointY, int goalPointX, int goalPointY)
+GetPathUsingManhattanDistance(int *A, int *B, int startPointX, int startPointY, int goalPointX, int goalPointY)
 {
 	unsigned int width  = gridDim.x * blockDim.x;
 	unsigned int height = gridDim.y * blockDim.y;
@@ -31,14 +80,13 @@ CalculateManhattanDistance(int *A, int *B, int startPointX, int startPointY, int
 	unsigned int y      = blockIdx.y * blockDim.y + threadIdx.y;
 	unsigned int offset = x + y * width;
 
-	if (offset < (width*width))
+	if (offset < (width*height))
 	{
 		int currentValue = A[offset];
 
 		if (currentValue != MAZE_OBSTACLE)
 		{
 			currentValue = currentValue == MAZE_FREE_POSITION? 0 : 1;
-
 
 			int mx, my;
 
@@ -69,7 +117,6 @@ CalculateManhattanDistance(int *A, int *B, int startPointX, int startPointY, int
 		}
 	}
 }
-
 
 void generateMaze(int *maze, int width, int height)
 {
@@ -134,12 +181,22 @@ int main()
 	//Reset no device
 	CUDA_CHECK_RETURN(cudaDeviceReset());
 
-	int *maze, *maze_result, *startPointX, *startPointY;
+	int *maze, *maze_result;
+	PathfindingData* pathfindingData;
 
 	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&maze, SIZE * sizeof(int)));
 	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&maze_result, SIZE * sizeof(int)));
-	//CUDA_CHECK_RETURN(cudaMallocManaged((void**)&startPointX, sizeof(int)));
-	//CUDA_CHECK_RETURN(cudaMallocManaged((void**)&startPointY, sizeof(int)));
+
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData, sizeof(PathfindingData)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionUp, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionLeft, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionRight, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionDown, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionUpLeft, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionUpRight, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionDownLeft, SIZE * sizeof(int)));
+	CUDA_CHECK_RETURN(cudaMallocManaged((void**)&pathfindingData->transitionDownRight, SIZE * sizeof(int)));
+
 
 	//Generate Maze
 	generateMaze(maze, WIDTH, HEIGHT);
@@ -173,16 +230,35 @@ int main()
 	USER_PAUSE;
 #endif
 
-	// Call Kernel
 	dim3 threadsPerBlock(32, 32);
 	dim3 grid(WIDTH / threadsPerBlock.x, HEIGHT / threadsPerBlock.y);
 
-	CalculateManhattanDistance << <grid, threadsPerBlock >> > (maze, maze_result, START_POINT_X, START_POINT_Y, END_POINT_X, END_POINT_Y);
+	Up<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionUp);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	Down<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionDown);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	Right<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionRight);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	Left<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionLeft);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	UpRight<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionUpRight);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	UpLeft<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionUpLeft);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	DownRight<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionDownRight);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+	DownLeft<<<grid, threadsPerBlock>>>(maze, pathfindingData->transitionDownLeft);
+	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+
+	/** Dummy approach - Get path using Manhattan Distance **/
+	//
+	//GetPathUsingManhattanDistance << <grid, threadsPerBlock >> > (maze, maze_result, START_POINT_X, START_POINT_Y, END_POINT_X, END_POINT_Y);
+
 	CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
 	// Showing results
 	printf("\nPathfinder - GPU\n");
-	printMatrix(maze_result, WIDTH, HEIGHT);
+	printMatrix(pathfindingData->transitionUp, WIDTH, HEIGHT);
 #ifdef _WIN32
 	USER_PAUSE;
 #endif
@@ -190,6 +266,15 @@ int main()
 	// 5 - Free memory
 	cudaFree(maze);
 	cudaFree(maze_result);
+	cudaFree(pathfindingData->transitionDown);
+	cudaFree(pathfindingData->transitionDownLeft);
+	cudaFree(pathfindingData->transitionDownRight);
+	cudaFree(pathfindingData->transitionLeft);
+	cudaFree(pathfindingData->transitionRight);
+	cudaFree(pathfindingData->transitionUp);
+	cudaFree(pathfindingData->transitionUpLeft);
+	cudaFree(pathfindingData->transitionUpRight);
+	cudaFree(&pathfindingData);
 
 	printf("End\n");
 #ifdef _WIN32
