@@ -14,7 +14,12 @@
 #define MAZE_START_POINT	2
 #define MAZE_END_POINT 		3
 
-#define GetTransitionMatrix(Name, config) \
+#define NUMBERS_MAX_COUNT 1024
+#define FILE_BUFFER_READ_MAX_SIZE 1024
+
+#define FILENAME "../data/maze.txt"
+
+#define GET_TRANSITION_MATRIX(Name, config) \
 __global__ void \
 Name(int *A, int *transitionMatrix) \
 {\
@@ -40,14 +45,14 @@ Name(int *A, int *transitionMatrix) \
 }
 
 
-GetTransitionMatrix(Up, nx=x;ny=y+1;);
-GetTransitionMatrix(Down, nx=x;ny=y-1;);
-GetTransitionMatrix(Left, nx=x-1;ny=y;);
-GetTransitionMatrix(Right, nx=x+1;ny=y;);
-GetTransitionMatrix(UpRight, nx=x+1;ny=y+1;);
-GetTransitionMatrix(UpLeft, nx=x-1;ny=y+1;);
-GetTransitionMatrix(DownRight, nx=x+1;ny=y-1;);
-GetTransitionMatrix(DownLeft, nx=x-1;ny=y-1;);
+GET_TRANSITION_MATRIX(Up, nx=x;ny=y+1;);
+GET_TRANSITION_MATRIX(Down, nx=x;ny=y-1;);
+GET_TRANSITION_MATRIX(Left, nx=x-1;ny=y;);
+GET_TRANSITION_MATRIX(Right, nx=x+1;ny=y;);
+GET_TRANSITION_MATRIX(UpRight, nx=x+1;ny=y+1;);
+GET_TRANSITION_MATRIX(UpLeft, nx=x-1;ny=y+1;);
+GET_TRANSITION_MATRIX(DownRight, nx=x+1;ny=y-1;);
+GET_TRANSITION_MATRIX(DownLeft, nx=x-1;ny=y-1;);
 
 struct PathfindingData
 {
@@ -66,7 +71,28 @@ __device__  __host__ int getXY(int x, int y, int width)
 	return y * width + x;
 }
 
+int loadNumbersFromFile(const char *filename, int *numberList)
+{
+    FILE *fd = NULL;
 
+    fd = fopen(filename, "r");
+
+    if (!fd) {
+        printf("Error when trying to open file! Please, create maze.txt file on data folder!\n");
+
+        return 0;
+    }
+
+    int itemIndex = 0;
+
+    while (itemIndex < (32*32) && fscanf(fd, "%ld", &numberList[itemIndex])) {
+        ++itemIndex;
+    }
+
+    fclose(fd);
+
+    return itemIndex;
+}
 
 /**
  * Pathfinding using an iterative approach and Manhattan distance as heuristic value
@@ -146,9 +172,9 @@ void generateMaze(int *maze, int width, int height)
 // main routine
 int main()
 {
-	const int WIDTH  = 32;
-	const int HEIGHT = 32;
-	const int SIZE 	 = WIDTH * HEIGHT;
+	int WIDTH  = 32;
+	int HEIGHT = 32;
+	int SIZE 	 = WIDTH * HEIGHT;
 
 	 // This will pick the best possible CUDA capable device
     cudaDeviceProp deviceProp;
@@ -199,7 +225,8 @@ int main()
 
 
 	//Generate Maze
-	generateMaze(maze, WIDTH, HEIGHT);
+	//generateMaze(maze, WIDTH, HEIGHT);
+	loadNumbersFromFile(FILENAME, maze);
 
 	// Copy Maze to Maze results matrix
 	int index;
@@ -258,7 +285,7 @@ int main()
 
 	// Showing results
 	printf("\nPathfinder - GPU\n");
-	printMatrix(pathfindingData->transitionUp, WIDTH, HEIGHT);
+	printMatrix(maze, WIDTH, HEIGHT);
 #ifdef _WIN32
 	USER_PAUSE;
 #endif
